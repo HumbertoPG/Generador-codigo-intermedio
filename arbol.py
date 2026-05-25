@@ -2,6 +2,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List
 
+# Versión 04: palabras reservadas y regla Type para int/float/void
+# Este archivo mantiene el AST alineado con la gramática de analisis.py.
 
 class ASTNode(ABC):
     @abstractmethod
@@ -10,6 +12,8 @@ class ASTNode(ABC):
 
 class Program(ASTNode):
     def __init__(self, functions: List[FunctionDecl]) -> None:
+        # La versión inicial guardaba declaraciones y sentencias directamente.
+        # Desde aquí el programa contiene funciones para acercarse al compilador final.
         self.functions = functions
     def accept(self, visitor: Visitor):
         visitor.visit_program(self)
@@ -25,6 +29,7 @@ class FunctionDecl(ASTNode):
 
 class Block(ASTNode):
     def __init__(self, decls: List[Declaration], stmts: List[ASTNode]) -> None:
+        # Las listas simplifican el recorrido del Visitor frente a las listas enlazadas de V1.
         self.decls = decls
         self.stmts = stmts
     def accept(self, visitor: Visitor):

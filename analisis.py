@@ -3,10 +3,14 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-keywords = {}
+# Versión 04: palabras reservadas y regla Type para int/float/void
+# Los comentarios de cada bloque marcan por qué se introduce cada pieza.
+
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID'}
 tokens = ['ID', 'INTLIT'] + list(keywords.values())
 literals = '+-*/%(){};='
 t_ignore = ' \t\r'
+
 
 
 def t_INTLIT(t):
@@ -34,7 +38,8 @@ def t_error(t):
 # --- Parser ---
 
 def p_Program(p):
-    """Program : ID ID '(' ')' Block"""
+    """Program : Type ID '(' ')' Block"""
+    # Todavía solo se acepta una función, pero ya se modela como FunctionDecl.
     p[0] = Program([FunctionDecl(p[1], p[2], [], p[5])])
 
 
@@ -45,11 +50,18 @@ def p_Block(p):
 def p_Declarations(p):
     """Declarations : Declarations Declaration
                     | empty"""
+    # Cambio pedagógico: se reemplaza la lista enlazada por una lista Python.
     p[0] = p[1] + [p[2]] if len(p) == 3 else []
 
 def p_Declaration(p):
-    """Declaration : ID ID ';' """
+    """Declaration : Type ID ';' """
     p[0] = Declaration(p[2], p[1])
+
+def p_Type(p):
+    """Type : INT
+            | FLOAT
+            | VOID"""
+    p[0] = p[1]
 
 
 def p_Statements(p):
@@ -131,6 +143,7 @@ class IRGenerator(Visitor):
     def ir_type(self, source_type: str):
         if source_type == 'float':
             return floatType
+        # Igual que la versión final, void todavía se trata como entero salvo casos concretos.
         return intType
 
     def visit_program(self, node: Program):
@@ -220,3 +233,4 @@ if __name__ == '__main__':
     irgen = IRGenerator(module)
     ast.accept(irgen)
     print(module)
+
