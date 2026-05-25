@@ -3,8 +3,8 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-# Versión 04: palabras reservadas y regla Type para int/float/void
-# Los comentarios de cada bloque marcan por qué se introduce cada pieza.
+                                              
+                                                                        
 
 keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID'}
 tokens = ['ID', 'INTLIT'] + list(keywords.values())
@@ -35,12 +35,32 @@ def t_error(t):
     print(f"Error léxico: '{t.value[0]}' en línea {t.lexer.lineno}")
     t.lexer.skip(1)
 
-# --- Parser ---
+                
 
 def p_Program(p):
-    """Program : Type ID '(' ')' Block"""
-    # Todavía solo se acepta una función, pero ya se modela como FunctionDecl.
-    p[0] = Program([FunctionDecl(p[1], p[2], [], p[5])])
+    """Program : FunctionList"""
+    p[0] = Program(p[1])
+
+def p_FunctionList(p):
+    """FunctionList : FunctionList FunctionDecl
+                    | FunctionDecl"""
+    p[0] = p[1] + [p[2]] if len(p) == 3 else [p[1]]
+
+def p_FunctionDecl(p):
+    """FunctionDecl : Type ID '(' ParamList ')' Block
+                    | Type ID '(' ')' Block"""
+    params = p[4] if len(p) == 7 else []
+    block = p[6] if len(p) == 7 else p[5]
+    p[0] = FunctionDecl(p[1], p[2], params, block)
+
+def p_ParamList(p):
+    """ParamList : ParamList ',' Param
+                 | Param"""
+    p[0] = p[1] + [p[3]] if len(p) == 4 else [p[1]]
+
+def p_Param(p):
+    """Param : Type ID"""
+    p[0] = Declaration(p[2], p[1])
 
 
 def p_Block(p):
@@ -50,7 +70,7 @@ def p_Block(p):
 def p_Declarations(p):
     """Declarations : Declarations Declaration
                     | empty"""
-    # Cambio pedagógico: se reemplaza la lista enlazada por una lista Python.
+                                                                             
     p[0] = p[1] + [p[2]] if len(p) == 3 else []
 
 def p_Declaration(p):
@@ -85,11 +105,13 @@ def p_Expression(p):
 
 def p_Relation(p):
     """Relation : Relation '+' Term
+                | Relation '-' Term
                 | Term"""
     p[0] = BinaryOp(p[2], p[1], p[3]) if len(p) == 4 else p[1]
 
 def p_Term(p):
     """Term : Term '*' Factor
+            | Term '/' Factor
             | Factor"""
     p[0] = BinaryOp(p[2], p[1], p[3]) if len(p) == 4 else p[1]
 
@@ -121,7 +143,7 @@ def p_error(p):
     else:
         print("Error de sintaxis: Fin de archivo inesperado")
 
-# --- Generador LLVM IR ---
+                           
 intType = ir.IntType(32)
 floatType = ir.FloatType()
 voidptr_ty = ir.IntType(8).as_pointer()
@@ -143,7 +165,7 @@ class IRGenerator(Visitor):
     def ir_type(self, source_type: str):
         if source_type == 'float':
             return floatType
-        # Igual que la versión final, void todavía se trata como entero salvo casos concretos.
+                                                                                              
         return intType
 
     def visit_program(self, node: Program):
@@ -210,8 +232,10 @@ class IRGenerator(Visitor):
         lhs, rhs = self.cast_types(lhs, rhs)
         is_float = isinstance(lhs.type, ir.FloatType)
         res = None
-        if node.op == '+': res = self.builder.add(lhs, rhs)
-        elif node.op == '*': res = self.builder.mul(lhs, rhs)
+        if node.op == '+': res = self.builder.fadd(lhs, rhs) if is_float else self.builder.add(lhs, rhs)
+        elif node.op == '-': res = self.builder.fsub(lhs, rhs) if is_float else self.builder.sub(lhs, rhs)
+        elif node.op == '*': res = self.builder.fmul(lhs, rhs) if is_float else self.builder.mul(lhs, rhs)
+        elif node.op == '/': res = self.builder.fdiv(lhs, rhs) if is_float else self.builder.sdiv(lhs, rhs)
         if res is None:
             raise NotImplementedError(f"Operador no soportado: {node.op}")
         self.stack.append(res)
