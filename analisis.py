@@ -3,10 +3,10 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                                              
+                                                  
                                                                         
 
-keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID'}
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'return': 'RETURN'}
 tokens = ['ID', 'INTLIT'] + list(keywords.values())
 literals = '+-*/%(){};='
 t_ignore = ' \t\r'
@@ -90,12 +90,17 @@ def p_Statements(p):
     p[0] = p[1] + [p[2]] if len(p) == 3 else []
 
 def p_Statement(p):
-    """Statement : Assignment"""
+    """Statement : Assignment
+                 | ReturnStatement"""
     p[0] = p[1]
 
 def p_Assignment(p):
     """Assignment : ID '=' Expression ';' """
     p[0] = Assignment(p[1], p[3])
+
+def p_ReturnStatement(p):
+    """ReturnStatement : RETURN Expression ';' """
+    p[0] = ReturnNode(p[2])
 
 
 def p_Expression(p):
@@ -239,6 +244,11 @@ class IRGenerator(Visitor):
         if res is None:
             raise NotImplementedError(f"Operador no soportado: {node.op}")
         self.stack.append(res)
+
+    def visit_return(self, node: ReturnNode):
+        node.expression.accept(self)
+        result = self.stack.pop()
+        self.builder.ret(result)
 
 
 if __name__ == '__main__':
