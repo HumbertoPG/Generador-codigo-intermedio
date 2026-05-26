@@ -3,10 +3,10 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                                                       
+                            
                                                                         
 
-keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN', 'for': 'FOR'}
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN', 'for': 'FOR', 'do': 'DO'}
 tokens = ['ID', 'INTLIT', 'FLOATLIT', 'STRING_LITERAL', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
 literals = '+-*/%(){}<>=;,:!'
 t_ignore = ' \t\r'
@@ -112,6 +112,7 @@ def p_Statement(p):
                  | CallStatement
                  | ReturnStatement
                  | ForStatement
+                 | DoWhileStatement
                  | Block"""
     p[0] = p[1]
 
@@ -132,6 +133,10 @@ def p_ForStatement(p):
     """ForStatement : FOR '(' Assignment Expression ';' Assignment ')' Block"""
                                                                                      
     p[0] = ForNode(p[3], p[4], p[6], p[8])
+
+def p_DoWhileStatement(p):
+    """DoWhileStatement : DO Block WHILE '(' Expression ')' ';' """
+    p[0] = DoWhileNode(p[2], p[5])
 
 def p_CallStatement(p):
     """CallStatement : Call ';' """
@@ -404,6 +409,22 @@ class IRGenerator(Visitor):
         node.incr.accept(self)
         self.builder.branch(for_head)
         self.builder.position_at_start(for_exit)
+
+
+    def visit_dowhile(self, node: DoWhileNode):
+        do_body = self.current_function.append_basic_block('do-body')
+        do_head = self.current_function.append_basic_block('do-head')
+        do_exit = self.current_function.append_basic_block('do-exit')
+        self.builder.branch(do_body)
+        self.builder.position_at_start(do_body)
+        node.body.accept(self)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(do_head)
+        self.builder.position_at_start(do_head)
+        node.cond.accept(self)
+        cond_val = self.stack.pop()
+        self.builder.cbranch(cond_val, do_body, do_exit)
+        self.builder.position_at_start(do_exit)
 
 
 if __name__ == '__main__':
