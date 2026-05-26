@@ -3,10 +3,10 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                                     
+                         
                                                                         
 
-keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'return': 'RETURN'}
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN'}
 tokens = ['ID', 'INTLIT', 'FLOATLIT', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
 literals = '+-*/%(){}<>=;,:!'
 t_ignore = ' \t\r'
@@ -101,6 +101,7 @@ def p_Statements(p):
 def p_Statement(p):
     """Statement : Assignment
                  | IfStatement
+                 | WhileStatement
                  | ReturnStatement
                  | Block"""
     p[0] = p[1]
@@ -113,6 +114,10 @@ def p_IfStatement(p):
     """IfStatement : IF '(' Expression ')' Block
                    | IF '(' Expression ')' Block ELSE Block"""
     p[0] = IfNode(p[3], p[5], p[7] if len(p) == 8 else None)
+
+def p_WhileStatement(p):
+    """WhileStatement : WHILE '(' Expression ')' Block"""
+    p[0] = WhileNode(p[3], p[5])
 
 def p_ReturnStatement(p):
     """ReturnStatement : RETURN Expression ';' """
@@ -300,6 +305,22 @@ class IRGenerator(Visitor):
         if not self.builder.block.is_terminated:
             self.builder.branch(if_merge)
         self.builder.position_at_start(if_merge)
+
+
+    def visit_while(self, node: WhileNode):
+        while_head = self.current_function.append_basic_block('while-head')
+        while_body = self.current_function.append_basic_block('while-body')
+        while_exit = self.current_function.append_basic_block('while-exit')
+        self.builder.branch(while_head)
+        self.builder.position_at_start(while_head)
+        node.condition.accept(self)
+        cond = self.stack.pop()
+        self.builder.cbranch(cond, while_body, while_exit)
+        self.builder.position_at_start(while_body)
+        node.body.accept(self)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(while_head)
+        self.builder.position_at_start(while_exit)
 
 
     def visit_return(self, node: ReturnNode):
