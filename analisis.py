@@ -3,10 +3,10 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                                                             
+                                                       
                                                                         
 
-keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN'}
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN', 'for': 'FOR'}
 tokens = ['ID', 'INTLIT', 'FLOATLIT', 'STRING_LITERAL', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
 literals = '+-*/%(){}<>=;,:!'
 t_ignore = ' \t\r'
@@ -111,6 +111,7 @@ def p_Statement(p):
                  | WhileStatement
                  | CallStatement
                  | ReturnStatement
+                 | ForStatement
                  | Block"""
     p[0] = p[1]
 
@@ -126,6 +127,11 @@ def p_IfStatement(p):
 def p_WhileStatement(p):
     """WhileStatement : WHILE '(' Expression ')' Block"""
     p[0] = WhileNode(p[3], p[5])
+
+def p_ForStatement(p):
+    """ForStatement : FOR '(' Assignment Expression ';' Assignment ')' Block"""
+                                                                                     
+    p[0] = ForNode(p[3], p[4], p[6], p[8])
 
 def p_CallStatement(p):
     """CallStatement : Call ';' """
@@ -377,6 +383,27 @@ class IRGenerator(Visitor):
         node.expression.accept(self)
         result = self.stack.pop()
         self.builder.ret(result)
+
+
+    def visit_for(self, node: ForNode):
+        node.init.accept(self)
+        for_head = self.current_function.append_basic_block('for-head')
+        for_body = self.current_function.append_basic_block('for-body')
+        for_incr = self.current_function.append_basic_block('for-incr')
+        for_exit = self.current_function.append_basic_block('for-exit')
+        self.builder.branch(for_head)
+        self.builder.position_at_start(for_head)
+        node.cond.accept(self)
+        cond_val = self.stack.pop()
+        self.builder.cbranch(cond_val, for_body, for_exit)
+        self.builder.position_at_start(for_body)
+        node.body.accept(self)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(for_incr)
+        self.builder.position_at_start(for_incr)
+        node.incr.accept(self)
+        self.builder.branch(for_head)
+        self.builder.position_at_start(for_exit)
 
 
 if __name__ == '__main__':

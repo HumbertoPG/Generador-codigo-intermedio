@@ -2,7 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List
 
-                                                             
+                                                       
                                                                         
 
 class ASTNode(ABC):
@@ -81,6 +81,16 @@ class ReturnNode(ASTNode):
     def accept(self, visitor: Visitor):
         visitor.visit_return(self)
 
+
+class ForNode(ASTNode):
+    def __init__(self, init: ASTNode, cond: ASTNode, incr: ASTNode, body: ASTNode) -> None:
+        self.init = init
+        self.cond = cond
+        self.incr = incr
+        self.body = body
+    def accept(self, visitor: Visitor):
+        visitor.visit_for(self)
+
 class BinaryOp(ASTNode):
     def __init__(self, op: str, lhs: ASTNode, rhs: ASTNode) -> None:
         self.op = op
@@ -127,3 +137,5 @@ class Visitor(ABC):
     def visit_call(self, node): pass
     @abstractmethod
     def visit_return(self, node): pass
+    @abstractmethod
+    def visit_for(self, node): pass
