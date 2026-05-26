@@ -1,6 +1,3 @@
-                                                                          
-                                                                              
-                                                                    
 import os
 import llvmlite.binding as llvm_bind
 import sys
@@ -81,17 +78,17 @@ def compilar_carpeta(carpeta_origen, carpeta_destino):
                 target_ref = llvm_bind.Target.from_triple(triple_string)
                 target_machine = target_ref.create_target_machine()
                 nuevo_modulo.data_layout = str(target_machine.target_data)
-
+                
                                                                                         
                 irgen = analisis.IRGenerator(nuevo_modulo)
-
+                
                                                                                      
                 ast.accept(irgen)
 
                                                                          
                 with open(ruta_salida, 'w', encoding='utf-8') as f_out:
                     f_out.write(str(nuevo_modulo))
-
+                
                 print("Generado correctamente.")
             else:
                 print("AST vacío.")

@@ -3,7 +3,7 @@ int main() {
     int resultado;
     selector = 2;
     resultado = 0;
-
+    
     switch (selector) {
         case 1:
             resultado = 100;

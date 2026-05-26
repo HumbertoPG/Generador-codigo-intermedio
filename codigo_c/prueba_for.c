@@ -3,7 +3,7 @@ int main() {
     int y;
     x = 0;
     y = 10;
-
+    
     for (x = 1; x < 5; x = x + 1;) {
         y = y * 2;
     }

@@ -3,7 +3,7 @@ int main() {
     int suma;
     contador = 1;
     suma = 0;
-
+    
     do {
         suma = suma + contador;
         contador = contador + 1;
