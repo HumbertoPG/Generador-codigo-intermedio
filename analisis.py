@@ -3,10 +3,10 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                            
+                                                                 
                                                                         
 
-keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN', 'for': 'FOR', 'do': 'DO'}
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN', 'for': 'FOR', 'do': 'DO', 'switch': 'SWITCH', 'case': 'CASE', 'default': 'DEFAULT'}
 tokens = ['ID', 'INTLIT', 'FLOATLIT', 'STRING_LITERAL', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
 literals = '+-*/%(){}<>=;,:!'
 t_ignore = ' \t\r'
@@ -113,6 +113,7 @@ def p_Statement(p):
                  | ReturnStatement
                  | ForStatement
                  | DoWhileStatement
+                 | SwitchStatement
                  | Block"""
     p[0] = p[1]
 
@@ -137,6 +138,26 @@ def p_ForStatement(p):
 def p_DoWhileStatement(p):
     """DoWhileStatement : DO Block WHILE '(' Expression ')' ';' """
     p[0] = DoWhileNode(p[2], p[5])
+
+def p_SwitchStatement(p):
+    """SwitchStatement : SWITCH '(' Expression ')' '{' CaseList '}' """
+    cases = [c for c in p[6] if c[0] != 'default']
+    default_clause = [c[1] for c in p[6] if c[0] == 'default']
+    default_stmt = default_clause[0] if default_clause else None
+    p[0] = SwitchNode(p[3], cases, default_stmt)
+
+def p_CaseList(p):
+    """CaseList : CaseList CaseItem
+                | CaseItem"""
+    p[0] = p[1] + [p[2]] if len(p) == 3 else [p[1]]
+
+def p_CaseItem(p):
+    """CaseItem : CASE INTLIT ':' Statements
+                | DEFAULT ':' Statements"""
+    if p[1] == 'case':
+        p[0] = (p[2], Block([], p[4]))
+    else:
+        p[0] = ('default', Block([], p[3]))
 
 def p_CallStatement(p):
     """CallStatement : Call ';' """
@@ -425,6 +446,27 @@ class IRGenerator(Visitor):
         cond_val = self.stack.pop()
         self.builder.cbranch(cond_val, do_body, do_exit)
         self.builder.position_at_start(do_exit)
+
+
+    def visit_switch(self, node: SwitchNode):
+        node.expr.accept(self)
+        switch_val = self.stack.pop()
+        switch_exit = self.current_function.append_basic_block('switch-exit')
+        default_block = self.current_function.append_basic_block('switch-default')
+        switch_inst = self.builder.switch(switch_val, default_block)
+        for case_val, case_body in node.cases:
+            case_block = self.current_function.append_basic_block(f'case-{case_val}')
+            switch_inst.add_case(ir.Constant(intType, case_val), case_block)
+            self.builder.position_at_start(case_block)
+            case_body.accept(self)
+            if not self.builder.block.is_terminated:
+                self.builder.branch(switch_exit)
+        self.builder.position_at_start(default_block)
+        if node.default_stmt:
+            node.default_stmt.accept(self)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(switch_exit)
+        self.builder.position_at_start(switch_exit)
 
 
 if __name__ == '__main__':

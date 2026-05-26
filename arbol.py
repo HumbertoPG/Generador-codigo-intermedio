@@ -2,7 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List
 
-                            
+                                                                 
                                                                         
 
 class ASTNode(ABC):
@@ -99,6 +99,15 @@ class DoWhileNode(ASTNode):
     def accept(self, visitor: Visitor):
         visitor.visit_dowhile(self)
 
+
+class SwitchNode(ASTNode):
+    def __init__(self, expr: ASTNode, cases: list, default_stmt: ASTNode = None) -> None:
+        self.expr = expr
+        self.cases = cases
+        self.default_stmt = default_stmt
+    def accept(self, visitor: Visitor):
+        visitor.visit_switch(self)
+
 class BinaryOp(ASTNode):
     def __init__(self, op: str, lhs: ASTNode, rhs: ASTNode) -> None:
         self.op = op
@@ -149,3 +158,5 @@ class Visitor(ABC):
     def visit_for(self, node): pass
     @abstractmethod
     def visit_dowhile(self, node): pass
+    @abstractmethod
+    def visit_switch(self, node): pass
