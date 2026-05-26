@@ -3,11 +3,11 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                         
+                                                             
                                                                         
 
 keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'while': 'WHILE', 'return': 'RETURN'}
-tokens = ['ID', 'INTLIT', 'FLOATLIT', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
+tokens = ['ID', 'INTLIT', 'FLOATLIT', 'STRING_LITERAL', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
 literals = '+-*/%(){}<>=;,:!'
 t_ignore = ' \t\r'
 
@@ -19,6 +19,13 @@ t_GE = r'>='
 def t_FLOATLIT(t):
     r'\d+\.\d+'
     t.value = float(t.value)
+    return t
+
+
+def t_STRING_LITERAL(t):
+    r'"([^\
+]|(\.))*?"'
+    t.value = t.value[1:-1]
     return t
 
 
@@ -102,6 +109,7 @@ def p_Statement(p):
     """Statement : Assignment
                  | IfStatement
                  | WhileStatement
+                 | CallStatement
                  | ReturnStatement
                  | Block"""
     p[0] = p[1]
@@ -118,6 +126,10 @@ def p_IfStatement(p):
 def p_WhileStatement(p):
     """WhileStatement : WHILE '(' Expression ')' Block"""
     p[0] = WhileNode(p[3], p[5])
+
+def p_CallStatement(p):
+    """CallStatement : Call ';' """
+    p[0] = p[1]
 
 def p_ReturnStatement(p):
     """ReturnStatement : RETURN Expression ';' """
@@ -150,7 +162,9 @@ def p_Term(p):
 def p_Factor(p):
     """Factor : INTLIT
               | FLOATLIT
+              | STRING_LITERAL
               | ID
+              | Call
               | '(' Expression ')'"""
     if len(p) == 4:
         p[0] = p[2]
@@ -164,6 +178,17 @@ def p_Factor(p):
         p[0] = Variable(p[1])
     else:
         p[0] = p[1]
+
+def p_Call(p):
+    """Call : ID '(' ArgList ')'
+            | ID '(' ')' """
+    args = p[3] if len(p) == 5 else []
+    p[0] = CallNode(p[1], args)
+
+def p_ArgList(p):
+    """ArgList : ArgList ',' Expression
+               | Expression"""
+    p[0] = p[1] + [p[3]] if len(p) == 4 else [p[1]]
 
 
 def p_empty(p):
@@ -189,7 +214,8 @@ class IRGenerator(Visitor):
         self.stack = []
         self.current_function = None
 
-        self.printf = None
+        printf_ty = ir.FunctionType(ir.IntType(32), [voidptr_ty], var_arg=True)
+        self.printf = ir.Function(self.module, printf_ty, name="printf")
 
 
     def cast_types(self, lhs, rhs):
@@ -266,6 +292,16 @@ class IRGenerator(Visitor):
         elif node.type == 'FLOAT':
             self.stack.append(ir.Constant(floatType, node.value))
 
+        elif node.type == 'STRING':
+            text = node.value + '\0'
+            c_text = ir.Constant(ir.ArrayType(ir.IntType(8), len(text)), bytearray(text.encode('utf8')))
+            global_name = f"str_{len(list(self.module.global_values))}"
+            global_text = ir.GlobalVariable(self.module, c_text.type, name=global_name)
+            global_text.linkage = 'internal'
+            global_text.global_constant = True
+            global_text.initializer = c_text
+            self.stack.append(self.builder.bitcast(global_text, voidptr_ty))
+
     def visit_binary_op(self, node: BinaryOp):
         node.lhs.accept(self)
         node.rhs.accept(self)
@@ -321,6 +357,20 @@ class IRGenerator(Visitor):
         if not self.builder.block.is_terminated:
             self.builder.branch(while_head)
         self.builder.position_at_start(while_exit)
+
+
+    def visit_call(self, node: CallNode):
+        args = []
+        for arg in node.args:
+            arg.accept(self)
+            args.append(self.stack.pop())
+        if node.name == 'printf':
+            self.stack.append(self.builder.call(self.printf, args))
+        else:
+            func = self.module.globals.get(node.name)
+            if func is None:
+                raise NameError(f"Función no declarada: {node.name}")
+            self.stack.append(self.builder.call(func, args))
 
 
     def visit_return(self, node: ReturnNode):

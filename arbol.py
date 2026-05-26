@@ -2,7 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, List
 
-                         
+                                                             
                                                                         
 
 class ASTNode(ABC):
@@ -67,6 +67,14 @@ class WhileNode(ASTNode):
         visitor.visit_while(self)
 
 
+class CallNode(ASTNode):
+    def __init__(self, name: str, args: List[ASTNode]) -> None:
+        self.name = name
+        self.args = args
+    def accept(self, visitor: Visitor):
+        visitor.visit_call(self)
+
+
 class ReturnNode(ASTNode):
     def __init__(self, expression: ASTNode) -> None:
         self.expression = expression
@@ -115,5 +123,7 @@ class Visitor(ABC):
     def visit_if(self, node): pass
     @abstractmethod
     def visit_while(self, node): pass
+    @abstractmethod
+    def visit_call(self, node): pass
     @abstractmethod
     def visit_return(self, node): pass
