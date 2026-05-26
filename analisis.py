@@ -3,14 +3,19 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                                                  
+                                                      
                                                                         
 
 keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'return': 'RETURN'}
-tokens = ['ID', 'INTLIT'] + list(keywords.values())
+tokens = ['ID', 'INTLIT', 'FLOATLIT'] + list(keywords.values())
 literals = '+-*/%(){};='
 t_ignore = ' \t\r'
 
+
+def t_FLOATLIT(t):
+    r'\d+\.\d+'
+    t.value = float(t.value)
+    return t
 
 
 def t_INTLIT(t):
@@ -122,6 +127,7 @@ def p_Term(p):
 
 def p_Factor(p):
     """Factor : INTLIT
+              | FLOATLIT
               | ID
               | '(' Expression ')'"""
     if len(p) == 4:
@@ -165,6 +171,12 @@ class IRGenerator(Visitor):
 
 
     def cast_types(self, lhs, rhs):
+        if lhs.type == rhs.type:
+            return lhs, rhs
+        if isinstance(lhs.type, ir.IntType) and isinstance(rhs.type, ir.FloatType):
+            return self.builder.sitofp(lhs, floatType), rhs
+        if isinstance(lhs.type, ir.FloatType) and isinstance(rhs.type, ir.IntType):
+            return lhs, self.builder.sitofp(rhs, floatType)
         return lhs, rhs
 
     def ir_type(self, source_type: str):
@@ -228,6 +240,9 @@ class IRGenerator(Visitor):
     def visit_literal(self, node: Literal):
         if node.type == 'INT':
             self.stack.append(ir.Constant(intType, node.value))
+
+        elif node.type == 'FLOAT':
+            self.stack.append(ir.Constant(floatType, node.value))
 
     def visit_binary_op(self, node: BinaryOp):
         node.lhs.accept(self)
