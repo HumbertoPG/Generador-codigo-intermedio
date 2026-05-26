@@ -3,14 +3,18 @@ import ply.yacc as yacc
 from arbol import *
 from llvmlite import ir
 
-                                                      
+                                     
                                                                         
 
-keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'return': 'RETURN'}
-tokens = ['ID', 'INTLIT', 'FLOATLIT'] + list(keywords.values())
-literals = '+-*/%(){};='
+keywords = {'int': 'INT', 'float': 'FLOAT', 'void': 'VOID', 'if': 'IF', 'else': 'ELSE', 'return': 'RETURN'}
+tokens = ['ID', 'INTLIT', 'FLOATLIT', 'EQ', 'NE', 'LE', 'GE'] + list(keywords.values())
+literals = '+-*/%(){}<>=;,:!'
 t_ignore = ' \t\r'
 
+t_EQ = r'=='
+t_NE = r'!='
+t_LE = r'<='
+t_GE = r'>='
 
 def t_FLOATLIT(t):
     r'\d+\.\d+'
@@ -96,12 +100,19 @@ def p_Statements(p):
 
 def p_Statement(p):
     """Statement : Assignment
-                 | ReturnStatement"""
+                 | IfStatement
+                 | ReturnStatement
+                 | Block"""
     p[0] = p[1]
 
 def p_Assignment(p):
     """Assignment : ID '=' Expression ';' """
     p[0] = Assignment(p[1], p[3])
+
+def p_IfStatement(p):
+    """IfStatement : IF '(' Expression ')' Block
+                   | IF '(' Expression ')' Block ELSE Block"""
+    p[0] = IfNode(p[3], p[5], p[7] if len(p) == 8 else None)
 
 def p_ReturnStatement(p):
     """ReturnStatement : RETURN Expression ';' """
@@ -109,8 +120,14 @@ def p_ReturnStatement(p):
 
 
 def p_Expression(p):
-    """Expression : Relation"""
-    p[0] = p[1]
+    """Expression : Expression EQ Relation
+                  | Expression NE Relation
+                  | Expression '<' Relation
+                  | Expression LE Relation
+                  | Expression '>' Relation
+                  | Expression GE Relation
+                  | Relation"""
+    p[0] = BinaryOp(p[2], p[1], p[3]) if len(p) == 4 else p[1]
 
 
 def p_Relation(p):
@@ -256,9 +273,34 @@ class IRGenerator(Visitor):
         elif node.op == '-': res = self.builder.fsub(lhs, rhs) if is_float else self.builder.sub(lhs, rhs)
         elif node.op == '*': res = self.builder.fmul(lhs, rhs) if is_float else self.builder.mul(lhs, rhs)
         elif node.op == '/': res = self.builder.fdiv(lhs, rhs) if is_float else self.builder.sdiv(lhs, rhs)
+        elif node.op == '<=': res = self.builder.fcmp_ordered('<=', lhs, rhs) if is_float else self.builder.icmp_signed('<=', lhs, rhs)
+        elif node.op == '>=': res = self.builder.fcmp_ordered('>=', lhs, rhs) if is_float else self.builder.icmp_signed('>=', lhs, rhs)
+        elif node.op == '<': res = self.builder.fcmp_ordered('<', lhs, rhs) if is_float else self.builder.icmp_signed('<', lhs, rhs)
+        elif node.op == '>': res = self.builder.fcmp_ordered('>', lhs, rhs) if is_float else self.builder.icmp_signed('>', lhs, rhs)
+        elif node.op == '==': res = self.builder.fcmp_ordered('==', lhs, rhs) if is_float else self.builder.icmp_signed('==', lhs, rhs)
+        elif node.op == '!=': res = self.builder.fcmp_ordered('!=', lhs, rhs) if is_float else self.builder.icmp_signed('!=', lhs, rhs)
         if res is None:
             raise NotImplementedError(f"Operador no soportado: {node.op}")
         self.stack.append(res)
+
+    def visit_if(self, node: IfNode):
+        if_true = self.current_function.append_basic_block('if-true')
+        if_false = self.current_function.append_basic_block('if-false')
+        if_merge = self.current_function.append_basic_block('if-merge')
+        node.condition.accept(self)
+        cond = self.stack.pop()
+        self.builder.cbranch(cond, if_true, if_false)
+        self.builder.position_at_start(if_true)
+        node.if_body.accept(self)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(if_merge)
+        self.builder.position_at_start(if_false)
+        if node.else_body:
+            node.else_body.accept(self)
+        if not self.builder.block.is_terminated:
+            self.builder.branch(if_merge)
+        self.builder.position_at_start(if_merge)
+
 
     def visit_return(self, node: ReturnNode):
         node.expression.accept(self)
